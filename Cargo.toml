@@ -1,0 +1,16 @@
+[package]
+name = "merged-orderbook"
+version = "0.1.0"
+edition = "2021"
+default-run = "server"
+
+[dependencies]
+tokio = { version = "1.17.0", features = ["rt-multi-thread"] }
+tonic = "0.6.2"
+prost = "0.9.0"
+tokio-stream = "0.1.8"
+async-trait = "0.1.53"
+async-stream = "0.3.3"
+
+[build-dependencies]
+tonic-build = "0.6.2"

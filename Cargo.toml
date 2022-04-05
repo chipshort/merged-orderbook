@@ -1,5 +1,7 @@
 [package]
 name = "merged-orderbook"
+authors = ["Christoph Otter"]
+description = "Provides a gRPC endpoint that merges Binance and BitStamp orderbooks for a single symbol"
 version = "0.1.0"
 edition = "2021"
 default-run = "server"
@@ -11,6 +13,7 @@ prost = "0.9.0"
 tokio-stream = "0.1.8"
 async-trait = "0.1.53"
 async-stream = "0.3.3"
+clap = { version = "3.0.14", features = ["derive"] }
 
 [build-dependencies]
 tonic-build = "0.6.2"

@@ -1,12 +1,17 @@
+use clap::Parser;
 use merged_orderbook::api;
 use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() {
-    let mut client =
-        api::orderbook_aggregator_client::OrderbookAggregatorClient::connect("http://[::1]:50051")
-            .await
-            .unwrap();
+    let args: Cli = Cli::parse();
+    let endpoint = args
+        .endpoint
+        .unwrap_or_else(|| "http://[::1]:50051".parse().unwrap());
+
+    let mut client = api::orderbook_aggregator_client::OrderbookAggregatorClient::connect(endpoint)
+        .await
+        .unwrap(); // TODO: replace with error message
 
     loop {
         if let Ok(r) = client.book_summary(api::Empty {}).await {
@@ -16,4 +21,11 @@ async fn main() {
             }
         }
     }
+}
+
+#[derive(Parser)]
+#[clap(author, version, about = "A simple client that just calls the accompanying server", long_about = None)]
+pub struct Cli {
+    /// The endpoint to connect to (default: "http://[::1]:50051").
+    endpoint: Option<tonic::transport::Endpoint>,
 }

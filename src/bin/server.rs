@@ -1,16 +1,17 @@
 use async_stream::stream;
 use async_trait::async_trait;
+use clap::Parser;
 
 use merged_orderbook::api;
 use merged_orderbook::api::orderbook_aggregator_server::{
     OrderbookAggregator, OrderbookAggregatorServer,
 };
+use std::net::SocketAddr;
 use std::{error::Error, pin::Pin};
 use tokio::select;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{transport::Server, Status};
 
-#[derive(Default)]
 struct Aggregator;
 
 type ResponseStream = Pin<Box<dyn Stream<Item = Result<api::Summary, Status>> + Send>>;
@@ -68,8 +69,12 @@ impl OrderbookAggregator for Aggregator {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let addr = "[::1]:50051".parse()?;
-    let aggregator = Aggregator::default();
+    let args: Cli = Cli::parse();
+    let addr = args
+        .listen
+        .unwrap_or_else(|| "[::1]:50051".parse().unwrap());
+
+    let aggregator = Aggregator;
 
     println!("Starting gRPC Server...");
     Server::builder()
@@ -78,4 +83,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     Ok(())
+}
+
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+pub struct Cli {
+    /// The socket address and port to listen on (default: "[::1]:50051").
+    #[clap(short, long)]
+    listen: Option<SocketAddr>,
+
+    /// The merged orderbook of this symbol will be provided by the gRPC server.
+    symbol: String,
 }

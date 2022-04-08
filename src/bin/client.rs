@@ -1,5 +1,6 @@
 use clap::Parser;
 use merged_orderbook::api;
+use serde::Deserialize;
 use tokio_stream::StreamExt;
 
 #[tokio::main]
@@ -9,11 +10,19 @@ async fn main() {
         .endpoint
         .unwrap_or_else(|| "http://[::1]:50051".parse().unwrap());
 
-    let mut client = api::orderbook_aggregator_client::OrderbookAggregatorClient::connect(endpoint)
-        .await
-        .unwrap(); // TODO: replace with error message
-
     loop {
+        let mut client = match api::orderbook_aggregator_client::OrderbookAggregatorClient::connect(
+            endpoint.clone(),
+        )
+        .await
+        {
+            Ok(client) => client,
+            Err(e) => {
+                eprintln!("Error connecting to orderbook aggregator");
+                continue;
+            }
+        };
+
         if let Ok(r) = client.book_summary(api::Empty {}).await {
             let mut stream = r.into_inner();
             while let Some(item) = stream.next().await {

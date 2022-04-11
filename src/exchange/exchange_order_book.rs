@@ -10,21 +10,8 @@ pub struct ExchangeOrderBook {
 }
 
 impl ExchangeOrderBook {
-    /// Creates a new ExchangeOrderBook, making sure to sort the levels correctly.
-    pub fn new(mut asks: Vec<api::Level>, mut bids: Vec<api::Level>) -> Self {
-        // I expect asks and bids to be sorted already, so the timsort variation used in sort_by will perform well,
-        // asks should be sorted from low to high, bids from high to low
-        asks.sort_by(|a, b| {
-            a.price
-                .partial_cmp(&b.price)
-                .expect("json values should never be NaN")
-        });
-        bids.sort_by(|a, b| {
-            b.price
-                .partial_cmp(&a.price)
-                .expect("json values should never be NaN")
-        });
-
+    /// Creates a new ExchangeOrderBook.
+    pub fn new(asks: Vec<api::Level>, bids: Vec<api::Level>) -> Self {
         Self { asks, bids }
     }
 

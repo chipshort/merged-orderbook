@@ -6,6 +6,7 @@ use merged_orderbook::api::orderbook_aggregator_server::{
     OrderbookAggregator, OrderbookAggregatorServer,
 };
 use merged_orderbook::exchange::binance::start_binance_task;
+use merged_orderbook::exchange::bitstamp::start_bitstamp_task;
 use merged_orderbook::exchange::exchange_order_book::ExchangeOrderBook;
 use merged_orderbook::orderbook::{calculate_spread, merge};
 use std::net::SocketAddr;
@@ -101,7 +102,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (binance_sender, binance_receiver) = watch::channel(None);
     let (bitstamp_sender, bitstamp_receiver) = watch::channel(None);
     start_binance_task(args.symbol.clone(), binance_sender);
-    start_binance_task(args.symbol.clone(), bitstamp_sender); // TODO: implement bitstamp task instead
+    start_bitstamp_task(args.symbol.clone(), bitstamp_sender); // TODO: implement bitstamp task instead
 
     // start task for merging both exchange orderbooks
     let (orderbook_sender, orderbook_receiver) = watch::channel(None);

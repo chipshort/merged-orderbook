@@ -1,7 +1,5 @@
-use std::{error::Error, time::Duration};
+use std::time::Duration;
 
-use crate::api::*;
-use serde::Deserialize;
 use serde_json::from_str;
 use tokio::sync::watch::Sender;
 use tokio_stream::{Stream, StreamExt};
@@ -10,16 +8,12 @@ use tokio_tungstenite::{
     tungstenite::{error::Error as TError, error::ProtocolError, Message},
 };
 
-use super::{common::handle_exchange_stream, exchange_order_book::ExchangeOrderBook};
+use super::{
+    common::{handle_exchange_stream, OrderBook, SocketError},
+    exchange_order_book::ExchangeOrderBook,
+};
 
 const BINANCE_WS_ENDPOINT: &str = "wss://stream.binance.com:9443/ws";
-
-#[derive(Debug)]
-pub enum BinanceSocketError {
-    Decode,
-    Closed,
-    Unexpected(Box<dyn Error>),
-}
 
 pub fn start_binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBook>>) {
     tokio::spawn(async move {
@@ -34,7 +28,13 @@ pub fn start_binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBoo
                     // TODO: exponential backoff?
                 }
                 Ok(stream) => {
-                    handle_exchange_stream(stream, &sender).await;
+                    handle_exchange_stream(
+                        stream.map(|r| r.map(|o| (o, "binance"))),
+                        &sender,
+                        "binance",
+                        Duration::from_secs(5),
+                    )
+                    .await;
                 }
             }
         }
@@ -42,9 +42,9 @@ pub fn start_binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBoo
 }
 
 /// Returns a stream of the top 10 bids and asks from binance or an error if the connection failed.
-pub async fn binance_orderbook_stream(
+async fn binance_orderbook_stream(
     symbol: &str,
-) -> Result<impl Stream<Item = Result<OrderBook, BinanceSocketError>>, TError> {
+) -> Result<impl Stream<Item = Result<OrderBook, SocketError>>, TError> {
     let endpoint = format!(
         "{}/{}@depth10@100ms",
         BINANCE_WS_ENDPOINT,
@@ -54,85 +54,27 @@ pub async fn binance_orderbook_stream(
 
     Ok(ws_stream.filter_map(|maybe_msg| match maybe_msg {
         Ok(Message::Text(msg)) => {
-            Some(from_str::<OrderBook>(&msg).map_err(|_| BinanceSocketError::Decode))
+            Some(from_str::<OrderBook>(&msg).map_err(|_| SocketError::Decode))
         }
         Ok(Message::Ping(_) | Message::Pong(_)) => None, // ignore ping and pong
         Ok(Message::Close(_))
         | Err(TError::Protocol(ProtocolError::ResetWithoutClosingHandshake)) => {
-            println!("binance socket was closed. Restarting...");
-            Some(Err(BinanceSocketError::Closed))
+            eprintln!("binance socket was closed. Restarting...");
+            Some(Err(SocketError::Closed))
         }
-        Err(e) => Some(Err(BinanceSocketError::Unexpected(Box::new(e)))),
+        Err(e) => Some(Err(SocketError::Unexpected(Box::new(e)))),
         _ => {
-            println!("Unexpected message from binance {:?}", maybe_msg);
+            eprintln!("Unexpected message from binance {:?}", maybe_msg);
             None
         } // ignore other messages
     }))
 }
 
-#[derive(Debug, Deserialize)]
-pub struct OrderBook {
-    pub bids: Vec<Limit>,
-    pub asks: Vec<Limit>,
-    // unnecessary fields omitted
-}
-
-#[derive(PartialEq, Debug)]
-pub struct Limit {
-    pub price: f64,
-    pub qty: f64,
-}
-
-impl<'de> Deserialize<'de> for Limit {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let mut vec = Vec::<String>::deserialize(deserializer)?;
-
-        let len = vec.len();
-        let invalid_length =
-            || serde::de::Error::invalid_length(len, &"a vec of length 2 was expected");
-        let invalid_value = |v: &str| {
-            serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(v),
-                &"a valid f64 string was expected",
-            )
-        };
-
-        let qty = vec.pop().ok_or_else(invalid_length)?;
-        let price = vec.pop().ok_or_else(invalid_length)?;
-
-        let qty = qty.parse::<f64>().map_err(|_| invalid_value(&qty))?;
-        let price = price.parse::<f64>().map_err(|_| invalid_value(&price))?;
-        Ok(Limit { price, qty })
-    }
-}
-
-impl Into<Level> for Limit {
-    fn into(self) -> Level {
-        Level {
-            price: self.price,
-            amount: self.qty,
-            exchange: "binance".to_string(),
-        }
-    }
-}
-
-impl Into<ExchangeOrderBook> for OrderBook {
-    fn into(self) -> ExchangeOrderBook {
-        let asks: Vec<Level> = self.asks.into_iter().map(|ask| ask.into()).collect();
-        let bids: Vec<Level> = self.bids.into_iter().map(|bid| bid.into()).collect();
-
-        ExchangeOrderBook::new(asks, bids)
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::{api, exchange::exchange_order_book::ExchangeOrderBook};
+    use crate::exchange::common::Limit;
 
-    use super::{Limit, OrderBook};
+    use super::OrderBook;
 
     #[test]
     fn deserialize_orderbook_event() {
@@ -164,30 +106,5 @@ mod test {
             },
             "the bid should be decoded correctly"
         )
-    }
-
-    #[test]
-    fn convert_order_book() {
-        let order_book = OrderBook {
-            asks: vec![Limit {
-                qty: 0.5,
-                price: 10.6,
-            }],
-            bids: vec![Limit {
-                qty: 1.56,
-                price: 9.4,
-            }],
-        };
-
-        let converted: ExchangeOrderBook = order_book.into();
-        let asks = converted.asks();
-        assert_eq!(
-            asks[0],
-            api::Level {
-                amount: 0.5,
-                price: 10.6,
-                exchange: "binance".to_string()
-            }
-        );
     }
 }

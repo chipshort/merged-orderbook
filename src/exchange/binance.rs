@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use log::*;
 use serde_json::from_str;
 use tokio::sync::watch::Sender;
 use tokio_stream::{Stream, StreamExt};
@@ -22,7 +23,7 @@ pub fn start_binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBoo
             // connect
             match binance_orderbook_stream(&symbol).await {
                 Err(e) => {
-                    eprintln!("Failed to connect to binance order book stream: {:?}", e);
+                    error!("Failed to connect to binance order book stream: {:?}", e);
                     // wait a bit before retrying
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     // TODO: exponential backoff?
@@ -59,12 +60,12 @@ async fn binance_orderbook_stream(
         Ok(Message::Ping(_) | Message::Pong(_)) => None, // ignore ping and pong
         Ok(Message::Close(_))
         | Err(TError::Protocol(ProtocolError::ResetWithoutClosingHandshake)) => {
-            eprintln!("binance socket was closed. Restarting...");
+            error!("binance socket was closed. Restarting...");
             Some(Err(SocketError::Closed))
         }
         Err(e) => Some(Err(SocketError::Unexpected(Box::new(e)))),
         _ => {
-            eprintln!("Unexpected message from binance {:?}", maybe_msg);
+            error!("Unexpected message from binance {:?}", maybe_msg);
             None
         } // ignore other messages
     }))

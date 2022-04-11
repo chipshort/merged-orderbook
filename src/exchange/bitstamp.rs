@@ -1,6 +1,7 @@
 use std::{error::Error, time::Duration};
 
 use futures_util::SinkExt;
+use log::*;
 use serde::Deserialize;
 use serde_json::from_str;
 use tokio::sync::watch::Sender;
@@ -24,7 +25,7 @@ pub fn start_bitstamp_task(symbol: String, sender: Sender<Option<ExchangeOrderBo
             // connect
             match bitstamp_orderbook_stream(&symbol).await {
                 Err(e) => {
-                    eprintln!("Failed to connect to bitstamp order book stream: {:?}", e);
+                    error!("Failed to connect to bitstamp order book stream: {:?}", e);
                     // wait a bit before retrying
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     // TODO: exponential backoff?
@@ -63,7 +64,7 @@ pub async fn bitstamp_orderbook_stream(
                 Ok(BitstampMsg::Data { channel, data }) => {
                     // make sure the channel is the one we expect
                     if channel != channel_name {
-                        eprintln!(
+                        error!(
                             "Got bitstamp data with an unexpected channel name: {}",
                             channel
                         );
@@ -74,20 +75,20 @@ pub async fn bitstamp_orderbook_stream(
                 }
                 Ok(BitstampMsg::Reconnect) => Some(Err(SocketError::Closed)),
                 Ok(_) => None, // ignore other messages
-                Err(_) => {
-                    println!("{}", msg);
+                Err(e) => {
+                    error!("Error decoding: {} {}", msg, e);
                     Some(Err(SocketError::Decode))
                 }
             },
             Ok(Message::Ping(_) | Message::Pong(_)) => None, // ignore ping and pong
             Ok(Message::Close(_))
             | Err(TError::Protocol(ProtocolError::ResetWithoutClosingHandshake)) => {
-                println!("bitstamp socket was closed. Restarting...");
+                info!("bitstamp socket was closed. Restarting...");
                 Some(Err(SocketError::Closed))
             }
             Err(e) => Some(Err(SocketError::Unexpected(Box::new(e)))),
             _ => {
-                println!("Unexpected message from bitstamp {:?}", maybe_msg);
+                info!("Unexpected message from bitstamp {:?}", maybe_msg);
                 None
             } // ignore other messages
         }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use clap::Parser;
 
+use log::*;
 use merged_orderbook::api;
 use merged_orderbook::api::orderbook_aggregator_server::{
     OrderbookAggregator, OrderbookAggregatorServer,
@@ -92,6 +93,7 @@ fn start_merge_task(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
     // setup cli
     let args: Cli = Cli::parse();
     let addr = args
@@ -112,7 +114,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let aggregator = Aggregator {
         receiver: orderbook_receiver,
     };
-    println!("Starting gRPC Server...");
+    info!("Starting gRPC Server...");
     Server::builder()
         .add_service(OrderbookAggregatorServer::new(aggregator))
         .serve(addr)

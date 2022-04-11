@@ -1,6 +1,5 @@
 use clap::Parser;
 use merged_orderbook::api;
-use serde::Deserialize;
 use tokio_stream::StreamExt;
 
 #[tokio::main]
@@ -18,7 +17,7 @@ async fn main() {
         {
             Ok(client) => client,
             Err(e) => {
-                eprintln!("Error connecting to orderbook aggregator");
+                eprintln!("Error connecting to orderbook aggregator {}", e);
                 continue;
             }
         };

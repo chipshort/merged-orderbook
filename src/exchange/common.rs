@@ -1,3 +1,4 @@
+use log::error;
 use serde::Deserialize;
 use std::{error::Error, fmt::Debug, time::Duration};
 use tokio::{select, sync::watch};
@@ -40,13 +41,13 @@ pub async fn handle_exchange_stream<T, E, S>(
                             .expect("websocket orderbook receiver should never be dropped");
                     }
                     e => {
-                        eprintln!("{} stream errored: {:?}", exchange_name, e);
+                        error!("{} stream errored: {:?}", exchange_name, e);
                         break; // leave loop, caller will have to reconnect
                     }
                 }
             },
             _ = tokio::time::sleep(timeout_after) => {
-                eprintln!("{} websocket timeout", exchange_name);
+                error!("{} websocket timeout", exchange_name);
                 break; // leave loop, caller will have to reconnect
             },
         };

@@ -24,7 +24,7 @@ async fn main() {
 
         if let Ok(r) = client.book_summary(api::Empty {}).await {
             let mut stream = r.into_inner();
-            while let Some(item) = stream.next().await {
+            while let Some(Ok(item)) = stream.next().await {
                 println!("{:?}", item);
             }
         }

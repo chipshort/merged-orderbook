@@ -83,13 +83,17 @@ pub fn start_merge_task(
     mut exchange0: watch::Receiver<Option<ExchangeOrderBook>>,
     mut exchange1: watch::Receiver<Option<ExchangeOrderBook>>,
     sender: watch::Sender<Option<api::Summary>>,
+    mut shutdown: watch::Receiver<()>,
 ) {
     tokio::spawn(async move {
         loop {
-            // wait for at least one of the receivers to get a new value
+            // wait for at least one of the receivers to get a new value, or stop if shutdown signal is received
             select! {
                 _ = exchange0.changed() => {},
-                _ = exchange1.changed() => {}
+                _ = exchange1.changed() => {},
+                _ = shutdown.changed() => {
+                    return;
+                }
             };
 
             let (asks, bids) = {
@@ -120,6 +124,8 @@ pub fn start_merge_task(
 
             let spread = calculate_spread(&asks, &bids);
 
+            // The receiver for this sender can only be dropped after this is no longer called, in case of shutdown.
+            // Before the receiver is dropped, this task has to stop and drop it's `shutdown` receiver.
             sender
                 .send(Some(api::Summary {
                     asks,

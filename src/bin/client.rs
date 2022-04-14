@@ -18,6 +18,7 @@ async fn main() {
             Ok(client) => client,
             Err(e) => {
                 eprintln!("Error connecting to orderbook aggregator {}", e);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 continue;
             }
         };

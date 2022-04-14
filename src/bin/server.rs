@@ -49,15 +49,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .listen
         .unwrap_or_else(|| "[::1]:50051".parse().unwrap());
 
+    // one channel to shutdown exchange websockets
+    let (shutdown_ws_tx, shutdown_ws_rx) = watch::channel(());
+    // one channel to shutdown merge task
+    let (shutdown_merge_tx, shutdown_merge_rx) = watch::channel(());
+
     // start exchange websocket tasks
     let (binance_sender, binance_receiver) = watch::channel(None);
     let (bitstamp_sender, bitstamp_receiver) = watch::channel(None);
-    start_binance_task(args.symbol.clone(), binance_sender);
-    start_bitstamp_task(args.symbol.clone(), bitstamp_sender);
+    start_binance_task(args.symbol.clone(), binance_sender, shutdown_ws_rx.clone());
+    start_bitstamp_task(args.symbol.clone(), bitstamp_sender, shutdown_ws_rx); // not cloning because no receiver should be left over
 
     // start task for merging both exchange orderbooks
     let (orderbook_sender, orderbook_receiver) = watch::channel(None);
-    start_merge_task(binance_receiver, bitstamp_receiver, orderbook_sender);
+    start_merge_task(
+        binance_receiver,
+        bitstamp_receiver,
+        orderbook_sender,
+        shutdown_merge_rx, // not cloning here, see above
+    );
 
     // start gRPC server
     let aggregator = Aggregator {
@@ -66,7 +76,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Starting gRPC Server...");
     Server::builder()
         .add_service(OrderbookAggregatorServer::new(aggregator))
-        .serve(addr)
+        .serve_with_shutdown(addr, async {
+            // wait for SIGINT
+            if let Err(e) = tokio::signal::ctrl_c().await {
+                error!("Failed to listen for shutdown signal {}", e);
+            }
+            // in any case, end running tasks using shutdown listeners
+
+            // shutdown websockets first, because they rely on their receiver not being dropped
+            // (which would be the case if the merge task was dropped first)
+            shutdown_ws_tx
+                .send(())
+                .expect("could not send shutdown message to exchange websockets");
+            // wait for exchange websocket tasks to end
+            shutdown_ws_tx.closed().await;
+
+            // shutdown merge task now
+            shutdown_merge_tx
+                .send(())
+                .expect("could not send shutdown message");
+
+            // wait for task to end
+            shutdown_merge_tx.closed().await;
+        })
         .await?;
 
     Ok(())

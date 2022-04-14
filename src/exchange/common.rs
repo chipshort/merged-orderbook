@@ -18,15 +18,14 @@ pub enum SocketError {
 /// This function is used to process a stream of exchange orderbooks.
 /// It will send the appropriate values to the given sender.
 /// When this function returns, you should try to reconnect
-pub async fn handle_exchange_stream<T, E, S>(
+pub async fn handle_exchange_stream<E, S>(
     mut stream: S,
     sender: &watch::Sender<Option<ExchangeOrderBook>>,
-    exchange_name: &str,
+    exchange_name: &'static str,
     timeout_after: Duration,
 ) where
-    T: Into<ExchangeOrderBook> + Debug,
     E: Debug,
-    S: Stream<Item = Result<T, E>> + Unpin,
+    S: Stream<Item = Result<OrderBook, E>> + Unpin,
 {
     // this loop is responsible for reading the stream
     loop {
@@ -35,10 +34,11 @@ pub async fn handle_exchange_stream<T, E, S>(
         select! {
             maybe_msg = stream.next() => {
                 match maybe_msg {
-                    Some(Ok(order_book)) => {
+                    Some(Ok(mut order_book)) => {
+                        order_book.only_top(10);
                         sender
-                            .send(Some(order_book.into()))
-                            .expect("websocket orderbook receiver should never be dropped");
+                            .send(Some((order_book, exchange_name).into()))
+                            .expect("websocket orderbook receiver should never be dropped"); // TODO: this can panic if the merge task stops before the exchange task
                     }
                     e => {
                         error!("{} stream errored: {:?}", exchange_name, e);

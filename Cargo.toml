@@ -7,7 +7,7 @@ edition = "2021"
 default-run = "server"
 
 [dependencies]
-tokio = { version = "1.17.0", features = ["rt-multi-thread"] }
+tokio = { version = "1.17.0", features = ["rt-multi-thread", "signal"] }
 tonic = "0.6.2"
 prost = "0.9.0"
 tokio-stream = { version = "0.1.8", features = ["sync"] }

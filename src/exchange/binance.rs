@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use log::*;
 use serde_json::from_str;
-use tokio::sync::watch::Sender;
+use tokio::{
+    select,
+    sync::watch::{Receiver, Sender},
+};
 use tokio_stream::{Stream, StreamExt};
 use tokio_tungstenite::{
     connect_async,
@@ -16,30 +19,36 @@ use super::{
 
 const BINANCE_WS_ENDPOINT: &str = "wss://stream.binance.com:9443/ws";
 
-pub fn start_binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBook>>) {
+pub fn start_binance_task(
+    symbol: String,
+    sender: Sender<Option<ExchangeOrderBook>>,
+    mut shutdown: Receiver<()>,
+) {
     tokio::spawn(async move {
-        // this loop is responsible for reconnecting in case of error
-        loop {
-            // connect
-            match binance_orderbook_stream(&symbol).await {
-                Err(e) => {
-                    error!("Failed to connect to binance order book stream: {:?}", e);
-                    // wait a bit before retrying
-                    // not doing exponential backoff for now, since we need to reconnect as soon as possible
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-                Ok(stream) => {
-                    handle_exchange_stream(
-                        stream.map(|r| r.map(|o| (o, "binance"))),
-                        &sender,
-                        "binance",
-                        Duration::from_secs(5),
-                    )
-                    .await;
-                }
-            }
+        // wait for shutdown
+        select! {
+            _ = binance_task(symbol, sender) => {},
+            _ = shutdown.changed() => {}
         }
     });
+}
+
+async fn binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBook>>) {
+    // this loop is responsible for reconnecting in case of error
+    loop {
+        // connect
+        match binance_orderbook_stream(&symbol).await {
+            Err(e) => {
+                error!("Failed to connect to binance order book stream: {:?}", e);
+                // wait a bit before retrying
+                // not doing exponential backoff for now, since we need to reconnect as soon as possible
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Ok(stream) => {
+                handle_exchange_stream(stream, &sender, "binance", Duration::from_secs(5)).await;
+            }
+        }
+    }
 }
 
 /// Returns a stream of the top 10 bids and asks from binance or an error if the connection failed.

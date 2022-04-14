@@ -4,7 +4,7 @@ use futures_util::SinkExt;
 use log::*;
 use serde::Deserialize;
 use serde_json::from_str;
-use tokio::sync::watch::Sender;
+use tokio::{select, sync::watch};
 use tokio_stream::{Stream, StreamExt};
 use tokio_tungstenite::{
     connect_async,
@@ -18,30 +18,36 @@ use super::{
 
 const BITSTAMP_WS_ENDPOINT: &str = "wss://ws.bitstamp.net";
 
-pub fn start_bitstamp_task(symbol: String, sender: Sender<Option<ExchangeOrderBook>>) {
+pub fn start_bitstamp_task(
+    symbol: String,
+    sender: watch::Sender<Option<ExchangeOrderBook>>,
+    mut shutdown: watch::Receiver<()>,
+) {
     tokio::spawn(async move {
-        // this loop is responsible for reconnecting in case of error
-        loop {
-            // connect
-            match bitstamp_orderbook_stream(&symbol).await {
-                Err(e) => {
-                    error!("Failed to connect to bitstamp order book stream: {:?}", e);
-                    // wait a bit before retrying
-                    // not doing exponential backoff for now, since we need to reconnect as soon as possible
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-                Ok(stream) => {
-                    handle_exchange_stream(
-                        stream.map(|r| r.map(|o| (o, "bitstamp"))),
-                        &sender,
-                        "bitstamp",
-                        Duration::from_secs(10),
-                    )
-                    .await;
-                }
-            }
+        // wait for shutdown
+        select! {
+            _ = bitstamp_task(symbol, sender) => {},
+            _ = shutdown.changed() => {}
         }
     });
+}
+
+async fn bitstamp_task(symbol: String, sender: watch::Sender<Option<ExchangeOrderBook>>) {
+    // this loop is responsible for reconnecting in case of error
+    loop {
+        // connect
+        match bitstamp_orderbook_stream(&symbol).await {
+            Err(e) => {
+                error!("Failed to connect to bitstamp order book stream: {:?}", e);
+                // wait a bit before retrying
+                // not doing exponential backoff for now, since we need to reconnect as soon as possible
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Ok(stream) => {
+                handle_exchange_stream(stream, &sender, "bitstamp", Duration::from_secs(60)).await;
+            }
+        }
+    }
 }
 
 /// Returns a stream of the top 10 bids and asks from bitstamp or an error if the connection failed.

@@ -1,4 +1,9 @@
-use crate::api::Level;
+use tokio::{select, sync::watch};
+
+use crate::{
+    api::{self, Level},
+    exchange::exchange_order_book::ExchangeOrderBook,
+};
 
 /// Merges two already sorted lists, keeping only `first_n` items.
 /// `less_than` can be a strict order (<) or a partial order (<=).
@@ -71,6 +76,59 @@ pub fn calculate_spread(asks: &[Level], bids: &[Level]) -> Option<f64> {
     let best_bid = bids.first()?.price;
 
     Some(best_ask - best_bid)
+}
+
+/// Spawns a task that merges the exchange orderbooks from two receivers and sends the result to the given sender.
+pub fn start_merge_task(
+    mut exchange0: watch::Receiver<Option<ExchangeOrderBook>>,
+    mut exchange1: watch::Receiver<Option<ExchangeOrderBook>>,
+    sender: watch::Sender<Option<api::Summary>>,
+) {
+    tokio::spawn(async move {
+        loop {
+            // wait for at least one of the receivers to get a new value
+            select! {
+                _ = exchange0.changed() => {},
+                _ = exchange1.changed() => {}
+            };
+
+            let (asks, bids) = {
+                let orderbook0 = exchange0.borrow();
+                let orderbook1 = exchange1.borrow();
+
+                // get asks and bids of both orderbook
+                let asks0 = orderbook0.as_ref().map(|o| o.asks()).unwrap_or(&[]);
+                let bids0 = orderbook0.as_ref().map(|o| o.bids()).unwrap_or(&[]);
+                let asks1 = orderbook1.as_ref().map(|o| o.asks()).unwrap_or(&[]);
+                let bids1 = orderbook1.as_ref().map(|o| o.bids()).unwrap_or(&[]);
+
+                // extract top 10 asks / bids
+                let asks = merge(
+                    asks0,
+                    asks1,
+                    |a1, a2| a1.price < a2.price, // asks are ordered from low to high
+                    10,
+                );
+                let bids = merge(
+                    bids0,
+                    bids1,
+                    |b1, b2| b1.price > b2.price, // bids from high to low
+                    10,
+                );
+                (asks, bids)
+            };
+
+            let spread = calculate_spread(&asks, &bids);
+
+            sender
+                .send(Some(api::Summary {
+                    asks,
+                    bids,
+                    spread: spread.unwrap_or(f64::MAX),
+                }))
+                .expect("merge receiver should never be dropped");
+        }
+    });
 }
 
 #[cfg(test)]

@@ -8,11 +8,9 @@ use merged_orderbook::api::orderbook_aggregator_server::{
 };
 use merged_orderbook::exchange::binance::start_binance_task;
 use merged_orderbook::exchange::bitstamp::start_bitstamp_task;
-use merged_orderbook::exchange::exchange_order_book::ExchangeOrderBook;
-use merged_orderbook::orderbook::{calculate_spread, merge};
+use merged_orderbook::orderbook::start_merge_task;
 use std::net::SocketAddr;
 use std::{error::Error, pin::Pin};
-use tokio::select;
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 use tokio_stream::{Stream, StreamExt};
@@ -42,55 +40,6 @@ impl OrderbookAggregator for Aggregator {
     }
 }
 
-/// Spawns a task that merges the exchange orderbooks from two receivers and sends the result to the given sender.
-fn start_merge_task(
-    mut exchange0: watch::Receiver<Option<ExchangeOrderBook>>,
-    mut exchange1: watch::Receiver<Option<ExchangeOrderBook>>,
-    sender: watch::Sender<Option<api::Summary>>,
-) {
-    tokio::spawn(async move {
-        loop {
-            // wait for at least one of the receivers to get a new value
-            select! {
-                _ = exchange0.changed() => {}, // TODO: handle result, log error
-                _ = exchange1.changed() => {}
-            };
-
-            let orderbook0 = exchange0.borrow(); // TODO: borrow_and_update?
-            let orderbook1 = exchange1.borrow();
-
-            // get asks and bids of both orderbook
-            let asks0 = orderbook0.as_ref().map(|o| o.asks()).unwrap_or(&[]);
-            let bids0 = orderbook0.as_ref().map(|o| o.bids()).unwrap_or(&[]);
-            let asks1 = orderbook1.as_ref().map(|o| o.asks()).unwrap_or(&[]);
-            let bids1 = orderbook1.as_ref().map(|o| o.bids()).unwrap_or(&[]);
-
-            // extract top 10 asks / bids
-            let asks = merge(
-                asks0,
-                asks1,
-                |a1, a2| a1.price < a2.price, // asks are ordered from low to high
-                10,
-            );
-            let bids = merge(
-                bids0,
-                bids1,
-                |b1, b2| b1.price > b2.price, // bids from high to low
-                10,
-            );
-            let spread = calculate_spread(&asks, &bids);
-
-            sender
-                .send(Some(api::Summary {
-                    asks,
-                    bids,
-                    spread: spread.unwrap_or(f64::MAX),
-                }))
-                .expect("merge receiver should never be dropped");
-        }
-    });
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -104,7 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (binance_sender, binance_receiver) = watch::channel(None);
     let (bitstamp_sender, bitstamp_receiver) = watch::channel(None);
     start_binance_task(args.symbol.clone(), binance_sender);
-    start_bitstamp_task(args.symbol.clone(), bitstamp_sender); // TODO: implement bitstamp task instead
+    start_bitstamp_task(args.symbol.clone(), bitstamp_sender);
 
     // start task for merging both exchange orderbooks
     let (orderbook_sender, orderbook_receiver) = watch::channel(None);

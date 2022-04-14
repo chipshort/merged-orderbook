@@ -27,8 +27,8 @@ pub fn start_bitstamp_task(symbol: String, sender: Sender<Option<ExchangeOrderBo
                 Err(e) => {
                     error!("Failed to connect to bitstamp order book stream: {:?}", e);
                     // wait a bit before retrying
+                    // not doing exponential backoff for now, since we need to reconnect as soon as possible
                     tokio::time::sleep(Duration::from_secs(1)).await;
-                    // TODO: exponential backoff?
                 }
                 Ok(stream) => {
                     handle_exchange_stream(

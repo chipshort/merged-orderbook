@@ -25,8 +25,8 @@ pub fn start_binance_task(symbol: String, sender: Sender<Option<ExchangeOrderBoo
                 Err(e) => {
                     error!("Failed to connect to binance order book stream: {:?}", e);
                     // wait a bit before retrying
+                    // not doing exponential backoff for now, since we need to reconnect as soon as possible
                     tokio::time::sleep(Duration::from_secs(1)).await;
-                    // TODO: exponential backoff?
                 }
                 Ok(stream) => {
                     handle_exchange_stream(

@@ -38,7 +38,7 @@ pub async fn handle_exchange_stream<E, S>(
                         order_book.only_top(10);
                         sender
                             .send(Some((order_book, exchange_name).into()))
-                            .expect("websocket orderbook receiver should never be dropped"); // TODO: this can panic if the merge task stops before the exchange task
+                            .expect("websocket orderbook receiver should never be dropped");
                     }
                     e => {
                         error!("{} stream errored: {:?}", exchange_name, e);

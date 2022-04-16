@@ -1,9 +1,8 @@
-use std::{error::Error, time::Duration};
-
 use futures_util::SinkExt;
 use log::*;
 use serde::Deserialize;
 use serde_json::from_str;
+use std::time::Duration;
 use tokio::{select, sync::watch};
 use tokio_stream::{Stream, StreamExt};
 use tokio_tungstenite::{
@@ -18,7 +17,13 @@ use super::{
 
 const BITSTAMP_WS_ENDPOINT: &str = "wss://ws.bitstamp.net";
 
-pub fn start_bitstamp_task(
+/// Starts a task that handles the bitstamp websocket connection.
+///
+/// This spawns a task that connects to the bitstamp websocket endpoint and
+/// sends a subscription message for the given symbol.
+/// All order book data that is received, will be sent to the given `sender`.
+/// The task will try to reconnect in case of errors and stop when the `shutdown` signal is received.
+pub fn start_task(
     symbol: String,
     sender: watch::Sender<Option<ExchangeOrderBook>>,
     mut shutdown: watch::Receiver<()>,

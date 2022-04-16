@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::api;
 
 /// Represents the order book of one exchange with correctly sorted bids and asks

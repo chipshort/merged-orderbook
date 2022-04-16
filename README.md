@@ -14,11 +14,11 @@ RUST_LOG=info cargo run --release -- BTCUSDT
 You can optionally provide an address to listen on, using `--listen`.
 For further information, just run it with `--help`.
 
-To start the (very basic) client, run:
+To start the client, run:
 ```shell
 cargo run --release --bin=client
 ```
-If you provided a custom address to the server before, you need to provide it as an argument to the client
+If you provided a custom address to the server before, you need to provide it as an argument to the client.
 
 Architecture
 ----------

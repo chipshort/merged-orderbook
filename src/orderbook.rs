@@ -1,3 +1,5 @@
+//! Methods to merge the order books and other order book related calculations
+
 use tokio::{select, sync::watch};
 
 use crate::{

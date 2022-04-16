@@ -1,5 +1,7 @@
+//! Methods and types that are common to both exchanges
+
 use log::error;
-use serde::Deserialize;
+use serde::{de, Deserialize};
 use std::{error::Error, fmt::Debug, time::Duration};
 use tokio::{select, sync::watch};
 use tokio_stream::{Stream, StreamExt};
@@ -15,9 +17,12 @@ pub enum SocketError {
     Unexpected(Box<dyn Error>),
 }
 
+/// Handles messages from the given stream of order book data,
+/// converting them to the correct format for merging.
+///
 /// This function is used to process a stream of exchange orderbooks.
 /// It will send the appropriate values to the given sender.
-/// When this function returns, you should try to reconnect
+/// When this function returns, you should try to reconnect.
 pub async fn handle_exchange_stream<E, S>(
     mut stream: S,
     sender: &watch::Sender<Option<ExchangeOrderBook>>,

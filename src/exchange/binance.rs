@@ -19,16 +19,20 @@ use super::{
 
 const BINANCE_WS_ENDPOINT: &str = "wss://stream.binance.com:9443/ws";
 
-pub fn start_binance_task(
+/// Starts a task that handles the binance websocket connection.
+///
+/// This spawns a task that connects to the binance websocket endpoint for the given symbol.
+/// All order book data that is received, will be sent to the given `sender`.
+/// The task will try to reconnect in case of errors and stop when the `shutdown` signal is received.
+pub fn start_task(
     symbol: String,
     sender: Sender<Option<ExchangeOrderBook>>,
     mut shutdown: Receiver<()>,
 ) {
     tokio::spawn(async move {
-        // wait for shutdown
         select! {
             _ = binance_task(symbol, sender) => {},
-            _ = shutdown.changed() => {}
+            _ = shutdown.changed() => {} // wait for shutdown
         }
     });
 }

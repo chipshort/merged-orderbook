@@ -6,8 +6,8 @@ use merged_orderbook::api;
 use merged_orderbook::api::orderbook_aggregator_server::{
     OrderbookAggregator, OrderbookAggregatorServer,
 };
-use merged_orderbook::exchange::binance::start_binance_task;
-use merged_orderbook::exchange::bitstamp::start_bitstamp_task;
+use merged_orderbook::exchange::binance;
+use merged_orderbook::exchange::bitstamp;
 use merged_orderbook::orderbook::start_merge_task;
 use std::net::SocketAddr;
 use std::{error::Error, pin::Pin};
@@ -57,8 +57,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // start exchange websocket tasks
     let (binance_sender, binance_receiver) = watch::channel(None);
     let (bitstamp_sender, bitstamp_receiver) = watch::channel(None);
-    start_binance_task(args.symbol.clone(), binance_sender, shutdown_ws_rx.clone());
-    start_bitstamp_task(args.symbol.clone(), bitstamp_sender, shutdown_ws_rx); // not cloning because no receiver should be left over
+    binance::start_task(args.symbol.clone(), binance_sender, shutdown_ws_rx.clone());
+    bitstamp::start_task(args.symbol.clone(), bitstamp_sender, shutdown_ws_rx); // not cloning because no receiver should be left over
 
     // start task for merging both exchange orderbooks
     let (orderbook_sender, orderbook_receiver) = watch::channel(None);

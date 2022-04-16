@@ -103,24 +103,43 @@ impl<'de> Deserialize<'de> for Limit {
     where
         D: serde::Deserializer<'de>,
     {
-        let mut vec = Vec::<String>::deserialize(deserializer)?;
+        struct PriceAmountVisitor;
 
-        let len = vec.len();
-        let invalid_length =
-            || serde::de::Error::invalid_length(len, &"a vec of length 2 was expected");
-        let invalid_value = |v: &str| {
-            serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(v),
-                &"a valid f64 string was expected",
-            )
-        };
+        impl<'de> de::Visitor<'de> for PriceAmountVisitor {
+            type Value = Limit;
 
-        let qty = vec.pop().ok_or_else(invalid_length)?;
-        let price = vec.pop().ok_or_else(invalid_length)?;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Limit")
+            }
 
-        let qty = qty.parse::<f64>().map_err(|_| invalid_value(&qty))?;
-        let price = price.parse::<f64>().map_err(|_| invalid_value(&price))?;
-        Ok(Limit { price, qty })
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                // error messages
+                let len = seq.size_hint().unwrap_or(0);
+                let invalid_length =
+                    || serde::de::Error::invalid_length(len, &"a vec of length 2 was expected");
+                let invalid_value = |v: &str| {
+                    serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(v),
+                        &"a valid f64 string was expected",
+                    )
+                };
+
+                // take price and qty
+                let price = seq.next_element::<String>()?.ok_or_else(invalid_length)?;
+                let qty = seq.next_element::<String>()?.ok_or_else(invalid_length)?;
+
+                // convert from String to f64
+                let qty = qty.parse::<f64>().map_err(|_| invalid_value(&qty))?;
+                let price = price.parse::<f64>().map_err(|_| invalid_value(&price))?;
+
+                Ok(Limit { price, qty })
+            }
+        }
+
+        deserializer.deserialize_seq(PriceAmountVisitor)
     }
 }
 
